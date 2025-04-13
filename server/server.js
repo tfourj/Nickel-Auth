@@ -18,6 +18,18 @@ dotenv.config();
 
 const register = client.register;
 
+const startTime = Date.now();
+const uptimeGauge = new client.Gauge({
+  name: 'server_uptime_seconds',
+  help: 'Server uptime in seconds'
+});
+register.registerMetric(uptimeGauge);
+
+setInterval(() => {
+  const uptime = (Date.now() - startTime) / 1000;
+  uptimeGauge.set(uptime);
+}, 15000);
+
 let requestCount = 0;
 
 const maxLimitReq = parseInt(process.env.RATE_LIMIT) || 50;
