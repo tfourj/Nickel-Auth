@@ -12,10 +12,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { verifyAttestation } from 'node-app-attest';
 import xss from 'xss';
 import helmet from 'helmet';
+import client from 'prom-client';
 
 dotenv.config();
 
-let requestCount = 0; // Track total requests
+let requestCount = 0;
+
 const maxLimitReq = parseInt(process.env.RATE_LIMIT) || 50;
 const jwtSecret = process.env.JWT_SECRET;
 const teamId = process.env.APPLE_TEAM_ID;
@@ -23,6 +25,7 @@ const bundleId = process.env.APPLE_BUNDLE_ID;
 if (!jwtSecret) {
   throw new Error('JWT_SECRET environment variable is not set.');
 }
+
 console.log('Environment Variables:');
 Object.entries(process.env).forEach(([key, value]) => {
   if (key === 'JWT_SECRET') {
@@ -121,15 +124,27 @@ async function validateDeviceToken(deviceToken) {
   return false;
 }
 
+const apiCallCounter = new client.Counter({
+  name: 'api_call_total',
+  help: 'Total number of API calls (excluding /metrics endpoints)',
+});
+register.registerMetric(apiCallCounter);
+
+app.use((req, res, next) => {
+  if (req.path !== '/metrics') {
+    apiCallCounter.inc();
+    requestCount++; // maintain legacy count if desired
+  }
+  next();
+});
+
 app.get('/ios-challenge', (req, res) => {
-    requestCount++;
     const challenge = uuidv4();
     console.log(`Challenge was requested, returning ${challenge}`);
     res.send(JSON.stringify({ challenge }));
 });
 
 app.post('/ios-auth', async (req, res) => {
-  requestCount++;
   console.log('Auth request received');
   try {
     const { attestation, challenge, keyId } = req.body;
@@ -166,7 +181,6 @@ app.post('/ios-auth', async (req, res) => {
 });
 
 app.post('/ios-request', async (req, res) => {
-  requestCount++;
   try {
     const authHeader = req.headers['authorization'] || '';
     const [authType, authToken] = authHeader.split(' ');
@@ -212,7 +226,6 @@ app.post('/ios-request', async (req, res) => {
 });
 
 app.post('/ios-validate', async (req, res) => {
-  requestCount++;
   console.log(`Validation request received`);
   const authHeader = req.headers['authorization'] || '';
   const [authType, authKey] = authHeader.split(' ');
@@ -228,17 +241,18 @@ app.post('/ios-validate', async (req, res) => {
       return res.status(403).json({ valid: false, error: 'Key not found in cache.' });
     }
   } catch (error) {
-    console.error('Auth key validation failed:', error.message);c
+    console.error('Auth key validation failed:', error.message);
     return res.status(401).json({ valid: false, error: 'Invalid or expired authKey.' });
   }
 });
 
-// Monitoring API
-app.get('/monitor', (req, res) => {
-  res.status(200).json({
-    totalRequests: requestCount,
-    cacheStats: authCache.getStats(),
-  });
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err);
+  }
 });
 
 app.listen(port, () => {
