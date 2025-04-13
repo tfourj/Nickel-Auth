@@ -16,6 +16,8 @@ import client from 'prom-client';
 
 dotenv.config();
 
+const register = client.register;
+
 let requestCount = 0;
 
 const maxLimitReq = parseInt(process.env.RATE_LIMIT) || 50;
