@@ -1,16 +1,16 @@
 #!/bin/bash
 
-echo "Stopping service nickelcobaltproxy"
+echo "Stopping service (nickel-auth)"
 docker compose down
 
-echo "Updating repo with git pull (nickelcobaltproxy)"
+echo "Updating repo with git pull (nickel-auth)"
 git fetch origin
 git reset --hard origin/$(git symbolic-ref --short HEAD)
 
-echo "Service updated restarting! (nickelcobaltproxy)"
+echo "Service updated restarting! (nickel-auth)"
 docker compose up --build -d
 
-echo "Prune docker images! (nickelcobaltproxy)"
+echo "Prune docker images! (nickel-auth)"
 docker image prune -f
 
-echo "Done! (nickelcobaltproxy)"
+echo "Done! (nickel-auth)"
