@@ -1,0 +1,39 @@
+{
+  "name": "nickel-auth",
+  "version": "1.0.0",
+  "description": "Proxy server used beetween iOS app Nickel and Cobalt.Tools API server",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tfourj/NickelCobaltProxy.git"
+  },
+  "keywords": [],
+  "author": "TfourJ",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tfourj/NickelCobaltProxy/issues"
+  },
+  "homepage": "https://github.com/tfourj/NickelCobaltProxy#readme",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "body-parser": "^2.2.0",
+    "chokidar": "^4.0.3",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-app-attest": "^0.0.6",
+    "node-cache": "^5.1.2",
+    "uuid": "^11.1.0",
+    "xss": "^1.0.15"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

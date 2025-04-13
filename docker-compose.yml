@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: ./server/Dockerfile
+    container_name: nickel-auth
+    image: nickel-auth
+    ports:
+      - "127.0.0.1:3200:3200" # Use this if you use reverse proxy (if you dont set it to 3200:3200)
+    volumes:
+      - ./server:/app/server
+      - ./server/api_keys.json:/app/api_keys.json:ro
+    env_file:
+      - ./server/.env
+    restart: unless-stopped
