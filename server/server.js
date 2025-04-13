@@ -13,6 +13,7 @@ import { verifyAttestation } from 'node-app-attest';
 import xss from 'xss';
 import helmet from 'helmet';
 import client from 'prom-client';
+import cors from 'cors';
 
 dotenv.config();
 
@@ -260,7 +261,13 @@ app.post('/ios-validate', async (req, res) => {
   }
 });
 
-app.get('/metrics', async (req, res) => {
+const monitoringCorsFn = cors({
+  origin: process.env.MONITORING_ORIGIN || '*',
+  methods: ['GET'],
+  allowedHeaders: ['Content-Type']
+});
+
+app.get('/metrics', monitoringCorsFn, async (req, res) => {
   try {
     res.set('Content-Type', register.contentType);
     res.end(await register.metrics());
