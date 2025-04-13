@@ -201,8 +201,13 @@ app.post('/ios-request', async (req, res) => {
     });
     res.status(cobaltRes.status).json(cobaltRes.data);
   } catch (err) {
-    console.error('Error in /ios-request:', err.message);
-    res.status(400).json({ error: err.message });
+    if (err.response) {
+      console.error('Error in /ios-request:', err.response.data);
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      console.error('Error in /ios-request:', err.message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   }
 });
 
