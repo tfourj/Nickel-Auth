@@ -57,8 +57,11 @@ const app = express();
 const port = process.env.PORT || 3200;
 app.set('trust proxy', true);
 
-const authCache = new NodeCache({ stdTTL: 600 }); // 10 minutes
-const challengeCache = new NodeCache({ stdTTL: 300 }); // 5 minutes
+const challengeTTL = parseInt(process.env.CHALLENGE_CACHE_TTL) || 300;
+const authTTL = parseInt(process.env.AUTH_CACHE_TTL) || 600;
+
+const authCache = new NodeCache({ stdTTL: authTTL }); // 10 minutes
+const challengeCache = new NodeCache({ stdTTL: challengeTTL }); // 5 minutes
 
 app.use(bodyParser.json());
 
@@ -191,7 +194,7 @@ app.post('/ios-auth', async (req, res) => {
 
     // Generate a temporary 10-minute key
     const tempKey = jwt.sign(
-      { keyId, exp: Math.floor(Date.now() / 1000) + 600 }, // 10 minutes
+      { keyId, exp: Math.floor(Date.now() / 1000) + authTTL },
       jwtSecret
     );
     authCache.set(tempKey, result.publicKey);
