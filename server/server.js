@@ -58,6 +58,8 @@ const port = process.env.PORT || 3200;
 app.set('trust proxy', true);
 
 const authCache = new NodeCache({ stdTTL: 600 }); // 10 minutes
+const challengeCache = new NodeCache({ stdTTL: 300 }); // 5 minutes
+
 app.use(bodyParser.json());
 
 app.use(helmet());
@@ -155,6 +157,7 @@ app.use((req, res, next) => {
 
 app.get('/ios-challenge', (req, res) => {
     const challenge = uuidv4();
+    challengeCache.set(challenge, true);
     console.log(`Challenge was requested, returning ${challenge}`);
     res.send(JSON.stringify({ challenge }));
 });
@@ -168,6 +171,11 @@ app.post('/ios-auth', async (req, res) => {
     validateInput(attestation);
     validateInput(challenge);
     validateInput(keyId);
+
+    if (!challenge || !challengeCache.has(challenge)) {
+      return res.status(400).json({ error: "Invalid or expired challenge." });
+    }
+    challengeCache.del(challenge);
 
     console.log('Validating attestation...');
     const result = verifyAttestation({
