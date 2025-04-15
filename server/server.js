@@ -1,6 +1,5 @@
 // server.js
 import express from 'express';
-import rateLimit from 'express-rate-limit';
 import axios from 'axios';
 import bodyParser from 'body-parser';
 import NodeCache from 'node-cache';
@@ -14,6 +13,7 @@ import xss from 'xss';
 import helmet from 'helmet';
 import client from 'prom-client';
 import cors from 'cors';
+import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceToken } from './utils.js';
 
 dotenv.config();
 
@@ -60,8 +60,9 @@ app.set('trust proxy', true);
 const challengeTTL = parseInt(process.env.CHALLENGE_CACHE_TTL) || 300;
 const authTTL = parseInt(process.env.AUTH_CACHE_TTL) || 600;
 
-const authCache = new NodeCache({ stdTTL: authTTL }); // 10 minutes
-const challengeCache = new NodeCache({ stdTTL: challengeTTL }); // 5 minutes
+export const authCache = new NodeCache({ stdTTL: authTTL }); // 10 minutes
+export const challengeCache = new NodeCache({ stdTTL: challengeTTL }); // 5 minutes
+export let apiKeys = {};
 
 app.use(bodyParser.json());
 
@@ -74,75 +75,14 @@ app.use((req, res, next) => {
   next();
 });
 
-function validateInput(input, type = 'string') {
-  if (type === 'string' && (typeof input !== 'string' || input.trim() === '')) {
-    throw new Error('Invalid input: Expected a non-empty string.');
-  }
-  if (type === 'object' && (typeof input !== 'object' || input === null)) {
-    throw new Error('Invalid input: Expected a valid object.');
-  }
-  return input;
-}
-
-const bannedIpsFile = './banned.ips';
-function addIpToBannedList(ip) {
-  try {
-    fs.appendFileSync(bannedIpsFile, `${ip}\n`, 'utf8');
-    console.log(`IP ${ip} added to banned list.`);
-  } catch (err) {
-    console.error(`Failed to write IP ${ip} to banned list:`, err.message);
-  }
-}
-
-// Rate limiter
-const limiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: maxLimitReq,
-  message: 'Too many requests from this IP, please try again later.',
-  headers: true,
-  keyGenerator: (req) => {
-    const forwardedFor = req.headers['cf-connecting-ip'];
-    const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : req.ip;
-    return clientIp;
-  },
-  handler: (req, res, next) => {
-    const ip = req.headers['cf-connecting-ip'] || req.ip;
-    console.error(`Blacklisted IP due to rate limit: ${ip}`);
-    addIpToBannedList(ip);
-    res.status(429).send('Too many requests from this IP, please try again later.');
-  },
-});
+// Apply the main rate limiter
 app.use(limiter);
 
 // Load API keys map
-let apiKeys = {};
-function loadApiKeys() {
-  try {
-    const raw = fs.readFileSync('./api_keys.json');
-    apiKeys = JSON.parse(raw);
-    console.log('🔁 Reloaded API keys');
-  } catch (err) {
-    console.error('❌ Failed to load api_keys.json:', err.message);
-  }
-}
-loadApiKeys();
+loadApiKeys(apiKeys);
 
 // Watch for changes in api_keys.json
-chokidar.watch('./api_keys.json').on('change', loadApiKeys);
-
-async function validateDeviceToken(deviceToken) {
-  if (!deviceToken || typeof deviceToken !== 'string') {
-    console.error('Invalid device token.');
-    return false;
-  }
-
-  console.log('Validating device token.');
-
-  if (authCache.has(deviceToken)) return true;
-
-  console.error('Device token validation failed.');
-  return false;
-}
+chokidar.watch('./api_keys.json').on('change', () => loadApiKeys(apiKeys));
 
 const apiCallCounter = new client.Counter({
   name: 'api_call_total',
@@ -158,7 +98,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/ios-challenge', (req, res) => {
+app.get('/ios-challenge', challengeLimiter, (req, res) => {
     const challenge = uuidv4();
     challengeCache.set(challenge, true);
     console.log(`Challenge was requested, returning ${challenge}`);
@@ -225,8 +165,11 @@ app.post('/ios-request', async (req, res) => {
 
     // Validate API URL
     validateInput(apiUrl);
-
-    const customAuth = apiKeys[apiUrl];
+    
+    // Normalize the URL by removing trailing slash
+    const normalizedUrl = apiUrl.replace(/\/+$/, '');
+    
+    const customAuth = apiKeys[normalizedUrl];
     if (!customAuth) {
       throw new Error('API not added to authentication server.');
     }
