@@ -90,10 +90,27 @@ const apiCallCounter = new client.Counter({
 });
 register.registerMetric(apiCallCounter);
 
+const avgResponseTimeGauge = new client.Gauge({
+  name: 'api_avg_response_time_ms',
+  help: 'Average response time of API calls in milliseconds'
+});
+register.registerMetric(avgResponseTimeGauge);
+let totalResponseTime = 0;
+let responseCount = 0;
+
 app.use((req, res, next) => {
   if (req.path !== '/metrics') {
     apiCallCounter.inc();
-    requestCount++; // maintain legacy count if desired
+    requestCount++;
+    const start = process.hrtime();
+    
+    res.on('finish', () => {
+      const end = process.hrtime(start);
+      const duration = (end[0] * 1e3) + (end[1] / 1e6);
+      totalResponseTime += duration;
+      responseCount++;
+      avgResponseTimeGauge.set(totalResponseTime / responseCount);
+    });
   }
   next();
 });
