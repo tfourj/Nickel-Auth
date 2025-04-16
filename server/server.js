@@ -98,12 +98,30 @@ register.registerMetric(avgResponseTimeGauge);
 let totalResponseTime = 0;
 let responseCount = 0;
 
+// Auth server response time
+const avgAuthResponseTimeGauge = new client.Gauge({
+  name: 'auth_server_avg_response_time_ms',
+  help: 'Average response time for auth server endpoints (ios-auth, ios-validate, ios-challenge) in ms'
+});
+register.registerMetric(avgAuthResponseTimeGauge);
+let totalAuthResponseTime = 0;
+let authResponseCount = 0;
+
+// Proxy processing time
+const avgProxyResponseTimeGauge = new client.Gauge({
+  name: 'proxy_avg_processing_time_ms',
+  help: 'Average processing time for proxy endpoint (/ios-request) in ms'
+});
+register.registerMetric(avgProxyResponseTimeGauge);
+let totalProxyResponseTime = 0;
+let proxyResponseCount = 0;
+
 app.use((req, res, next) => {
   if (req.path !== '/metrics') {
     apiCallCounter.inc();
     requestCount++;
     const start = process.hrtime();
-    
+
     res.on('finish', () => {
       const end = process.hrtime(start);
       const duration = (end[0] * 1e3) + (end[1] / 1e6);
@@ -115,14 +133,53 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/ios-challenge', challengeLimiter, (req, res) => {
+// --- AUTH SERVER ENDPOINTS METRICS ---
+
+function trackAuthResponseTime(handler) {
+  return async (req, res, next) => {
+    const start = process.hrtime();
+    // Wrap res.end to ensure we always record time
+    const origEnd = res.end;
+    res.end = function (...args) {
+      const end = process.hrtime(start);
+      const duration = (end[0] * 1e3) + (end[1] / 1e6);
+      totalAuthResponseTime += duration;
+      authResponseCount++;
+      avgAuthResponseTimeGauge.set(totalAuthResponseTime / authResponseCount);
+      origEnd.apply(res, args);
+    };
+    return handler(req, res, next);
+  };
+}
+
+// --- PROXY ENDPOINT METRICS ---
+
+function trackProxyResponseTime(handler) {
+  return async (req, res, next) => {
+    const start = process.hrtime();
+    const origEnd = res.end;
+    res.end = function (...args) {
+      const end = process.hrtime(start);
+      const duration = (end[0] * 1e3) + (end[1] / 1e6);
+      totalProxyResponseTime += duration;
+      proxyResponseCount++;
+      avgProxyResponseTimeGauge.set(totalProxyResponseTime / proxyResponseCount);
+      origEnd.apply(res, args);
+    };
+    return handler(req, res, next);
+  };
+}
+
+// --- ENDPOINTS ---
+
+app.get('/ios-challenge', challengeLimiter, trackAuthResponseTime((req, res) => {
     const challenge = uuidv4();
     challengeCache.set(challenge, true);
     console.log(`Challenge was requested, returning ${challenge}`);
     res.send(JSON.stringify({ challenge }));
-});
+}));
 
-app.post('/ios-auth', async (req, res) => {
+app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
   console.log('Auth request received');
   try {
     const { attestation, challenge, keyId } = req.body;
@@ -161,9 +218,9 @@ app.post('/ios-auth', async (req, res) => {
     console.error('Error in /ios-auth:', error.message);
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
-app.post('/ios-request', async (req, res) => {
+app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
   try {
     const authHeader = req.headers['authorization'] || '';
     const [authType, authToken] = authHeader.split(' ');
@@ -209,9 +266,9 @@ app.post('/ios-request', async (req, res) => {
       res.status(500).json({ error: 'Internal server error' });
     }
   }
-});
+}));
 
-app.post('/ios-validate', async (req, res) => {
+app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
   console.log(`Validation request received`);
   const authHeader = req.headers['authorization'] || '';
   const [authType, authKey] = authHeader.split(' ');
@@ -230,7 +287,7 @@ app.post('/ios-validate', async (req, res) => {
     console.error('Auth key validation failed:', error.message);
     return res.status(401).json({ valid: false, error: 'Invalid or expired authKey.' });
   }
-});
+}));
 
 const monitoringCorsFn = cors({
   origin: process.env.MONITORING_ORIGIN || '*',
