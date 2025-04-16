@@ -26,11 +26,6 @@ const uptimeGauge = new client.Gauge({
 });
 register.registerMetric(uptimeGauge);
 
-setInterval(() => {
-  const uptime = (Date.now() - startTime) / 1000;
-  uptimeGauge.set(uptime);
-}, 15000);
-
 let requestCount = 0;
 
 const maxLimitReq = parseInt(process.env.RATE_LIMIT) || 50;
@@ -297,6 +292,9 @@ const monitoringCorsFn = cors({
 
 app.get('/metrics', monitoringCorsFn, async (req, res) => {
   try {
+    const uptime = (Date.now() - startTime) / 1000;
+    uptimeGauge.set(uptime);
+
     res.set('Content-Type', register.contentType);
     res.end(await register.metrics());
   } catch (err) {
