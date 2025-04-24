@@ -10,7 +10,7 @@ services:
     volumes:
       - ./server:/app/server
       - ./server/api_keys.json:/app/api_keys.json:ro
-      - ./server/banned.ips:/app/banned.ips
+      - ./server/banned-ips.log:/app/banned-ips.log
     env_file:
       - ./server/.env
     restart: unless-stopped

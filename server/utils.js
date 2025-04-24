@@ -3,10 +3,17 @@ import fs from 'fs';
 import { authCache } from './server.js';
 
 const maxLimitReq = parseInt(process.env.RATE_LIMIT) || 50;
-const bannedIpsFile = './banned.ips';
+const bannedIpsFile = './banned-ips.log';
 
 export function addIpToBannedList(ip) {
   try {
+    if (!fs.existsSync(bannedIpsFile)) {
+      console.error(`Banned IPs file does not exist. Please create it manually...`);
+    }
+    const bannedList = fs.readFileSync(bannedIpsFile, 'utf8').split('\n').map(line => line.trim());
+    if (bannedList.includes(ip)) {
+      return;
+    }
     fs.appendFileSync(bannedIpsFile, `${ip}\n`, 'utf8');
     console.log(`IP ${ip} added to banned list.`);
   } catch (err) {
