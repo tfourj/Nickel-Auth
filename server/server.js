@@ -304,6 +304,7 @@ app.get('/metrics', monitoringCorsFn, async (req, res) => {
 });
 
 app.use((req, res, next) => {
+  console.warn(`404 Not Found: ${req.method} ${req.originalUrl}`);
   // If it's a GET, return a JSON error
   if (req.method === 'GET') {
     return res.status(404).json({ error: 'Not found' });
