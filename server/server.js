@@ -111,20 +111,21 @@ register.registerMetric(avgProxyResponseTimeGauge);
 let totalProxyResponseTime = 0;
 let proxyResponseCount = 0;
 
+// Metrics and API call counter middleware
 app.use((req, res, next) => {
-  if (req.path !== '/metrics') {
-    apiCallCounter.inc();
-    requestCount++;
-    const start = process.hrtime();
-
-    res.on('finish', () => {
+  const start = process.hrtime();
+  res.on('finish', () => {
+    // Only increment if not /metrics and not 404
+    if (req.path !== '/metrics' && res.statusCode !== 404) {
+      apiCallCounter.inc();
+      requestCount++;
       const end = process.hrtime(start);
       const duration = (end[0] * 1e3) + (end[1] / 1e6);
       totalResponseTime += duration;
       responseCount++;
       avgResponseTimeGauge.set(totalResponseTime / responseCount);
-    });
-  }
+    }
+  });
   next();
 });
 
@@ -300,6 +301,15 @@ app.get('/metrics', monitoringCorsFn, async (req, res) => {
   } catch (err) {
     res.status(500).end(err);
   }
+});
+
+app.use((req, res, next) => {
+  // If it's a GET, return a JSON error
+  if (req.method === 'GET') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  // For other methods, plain text
+  res.status(404).send('Not found');
 });
 
 app.listen(port, () => {
