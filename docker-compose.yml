@@ -1,16 +1,21 @@
 services:
-  app:
-    build:
-      context: .
-      dockerfile: ./server/Dockerfile
+  nickel-auth:
+    image: tfourj/nickel-auth
     container_name: nickel-auth
-    image: nickel-auth
     ports:
-      - "127.0.0.1:3200:3200" # Use this if you use reverse proxy (if you dont set it to 3200:3200)
+      - '3000:3000' # Use 127.0.0.1:3110:3110 if you want to use reverse proxy
+    expose:
+      - "${PORT}"
+    restart: unless-stopped
     volumes:
-      - ./server:/app/server
-      - ./server/api_keys.json:/app/api_keys.json:ro
-      - ./server/banned-ips.log:/app/banned-ips.log
-    env_file:
-      - ./server/.env
+      - ./api_keys.json:/app/api_keys.json:ro
+      - ./banned-ips.log:/app/banned-ips.log
+    env_file: ".env"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup --interval 300
     restart: unless-stopped
