@@ -11,11 +11,14 @@ services:
       - ./api_keys.json:/app/api_keys.json:ro
       - ./banned-ips.log:/app/banned-ips.log
     env_file: ".env"
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+      - com.centurylinklabs.watchtower.scope=nickel-auth
 
-  watchtower:
+  watchtower-nickel-auth:
     image: containrrr/watchtower
-    container_name: watchtower
+    container_name: watchtower-nickel-auth
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    command: --cleanup --interval 300
+    command: --cleanup --interval 300 --scope nickel-auth
     restart: unless-stopped
