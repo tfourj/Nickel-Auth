@@ -13,7 +13,7 @@ import xss from 'xss';
 import helmet from 'helmet';
 import client from 'prom-client';
 import cors from 'cors';
-import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceToken } from './utils.js';
+import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceToken, extractDomain } from './utils.js';
 
 dotenv.config();
 
@@ -233,6 +233,9 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
     const body = req.body;
     const { 'api-url': apiUrl, ...filteredBody } = body;
 
+    const userUrl = body.url;
+    const domain = userUrl ? extractDomain(userUrl) : 'no-url';
+
     // Validate API URL
     validateInput(apiUrl);
     
@@ -244,7 +247,7 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
       throw new Error('API not added to authentication server.');
     }
 
-    console.log('Making request to Cobalt API:', apiUrl);
+    console.log(`Making request to Cobalt API for: ${domain} to instance url: ${apiUrl}`);
 
     const cobaltRes = await axios.post(apiUrl, filteredBody, {
       headers: {

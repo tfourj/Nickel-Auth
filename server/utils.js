@@ -84,14 +84,23 @@ export function loadApiKeys(apiKeysObj) {
 
 export async function validateDeviceToken(deviceToken) {
   if (!deviceToken || typeof deviceToken !== 'string') {
-    console.error('Invalid device token.');
+    console.error('Invalid device token (validateDeviceToken).');
     return false;
   }
 
-  console.log('Validating device token.');
-
   if (authCache.has(deviceToken)) return true;
 
-  console.error('Device token validation failed.');
+  console.error('Device token validation failed (validateDeviceToken).');
   return false;
+}
+
+export function extractDomain(url) {
+  try {
+    if (!url || typeof url !== 'string') return 'unknown';
+    const cleanUrl = url.replace(/^https?:\/\//, '');
+    const domain = cleanUrl.split('/')[0];
+    return domain || 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
