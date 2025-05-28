@@ -190,7 +190,7 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
     }
     challengeCache.del(challenge);
 
-    console.log('Validating attestation...');
+    console.log(`Validating attestation - Challenge: ${challenge.substring(0, 8)}..., KeyId: ${keyId.substring(0, 8)}..., Attestation: ${attestation.substring(0, 16)}...`);
     const result = verifyAttestation({
       attestation: Buffer.from(attestation, 'base64'),
       challenge,
@@ -265,9 +265,9 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
 }));
 
 app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
-  console.log(`Validation request received`);
   const authHeader = req.headers['authorization'] || '';
   const [authType, authKey] = authHeader.split(' ');
+  console.log(`Validating device token: ${authKey.substring(0, 8)}...`);
 
   if (authType !== 'Nickel-Auth' || !authKey) {
     return res.status(400).json({ error: 'Invalid or missing authorization header.' });
@@ -277,10 +277,12 @@ app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
     if (authCache.has(authKey)) { // Validate using tempKey
       return res.status(200).json({ valid: true });
     } else {
+      console.log(`Device token validation failed - not found in cache: ${authKey.substring(0, 8)}...`);
       return res.status(403).json({ valid: false, error: 'Key not found in cache.' });
     }
   } catch (error) {
     console.error('Auth key validation failed:', error.message);
+    console.error(`Failed device token: ${authKey.substring(0, 8)}...`);
     return res.status(401).json({ valid: false, error: 'Invalid or expired authKey.' });
   }
 }));
@@ -304,7 +306,7 @@ app.get('/metrics', monitoringCorsFn, async (req, res) => {
 });
 
 app.use((req, res, next) => {
-  console.warn(`404 Not Found: ${req.method} ${req.originalUrl}`);
+  //console.log(`404 Not Found: ${req.method} ${req.originalUrl}`);
   // If it's a GET, return a JSON error
   if (req.method === 'GET') {
     return res.status(404).json({ error: 'Not found' });
