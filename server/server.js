@@ -185,29 +185,41 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
     validateInput(challenge);
     validateInput(keyId);
 
-    if (!challenge || !challengeCache.has(challenge)) {
+    const [hasChallenge] = await Promise.all([
+      challengeCache.has(challenge)
+    ]);
+
+    if (!challenge || !hasChallenge) {
       return res.status(400).json({ error: "Invalid or expired challenge." });
     }
-    challengeCache.del(challenge);
+
+    await challengeCache.del(challenge);
 
     console.log(`Validating attestation - Challenge: ${challenge.substring(0, 8)}..., KeyId: ${keyId.substring(0, 8)}..., Attestation: ${attestation.substring(0, 16)}...`);
-    const result = verifyAttestation({
+    
+    const result = await Promise.resolve(verifyAttestation({
       attestation: Buffer.from(attestation, 'base64'),
       challenge,
       keyId,
       bundleIdentifier: bundleId,
       teamIdentifier: teamId,
       allowDevelopmentEnvironment: process.env.NODE_ENV !== 'production',
-    });
+    }));
 
     console.log('Attestation validated successfully');
 
-    // Generate a temporary 10-minute key
-    const tempKey = jwt.sign(
-      { keyId, exp: Math.floor(Date.now() / 1000) + authTTL },
-      jwtSecret
-    );
-    authCache.set(tempKey, result.publicKey);
+    const tempKey = await new Promise((resolve, reject) => {
+      jwt.sign(
+        { keyId, exp: Math.floor(Date.now() / 1000) + authTTL },
+        jwtSecret,
+        (err, token) => {
+          if (err) reject(err);
+          else resolve(token);
+        }
+      );
+    });
+
+    await authCache.set(tempKey, result.publicKey);
 
     res.status(200).json({ tempKey });
   } catch (error) {
@@ -277,7 +289,11 @@ app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
   }
 
   try {
-    if (authCache.has(authKey)) { // Validate using tempKey
+    const [hasAuth] = await Promise.all([
+      authCache.has(authKey)
+    ]);
+
+    if (hasAuth) {
       return res.status(200).json({ valid: true });
     } else {
       console.log(`Device token validation failed - not found in cache: ${authKey.substring(0, 8)}...`);
