@@ -15,7 +15,7 @@ export function addIpToBannedList(ip) {
       return;
     }
     fs.appendFileSync(bannedIpsFile, `${ip}\n`, 'utf8');
-    console.log(`IP ${ip} added to banned list.`);
+    console.error(`Blacklisted IP due to rate limit: ${ip}`);
   } catch (err) {
     console.error(`Failed to write IP ${ip} to banned list:`, err.message);
   }
@@ -35,7 +35,6 @@ export const limiter = rateLimit({
   keyGenerator: getClientIp,
   handler: (req, res, next) => {
     const ip = req.headers['cf-connecting-ip'] || req.ip;
-    console.error(`Blacklisted IP due to rate limit: ${ip}`);
     addIpToBannedList(ip);
     res.status(429).send('Too many requests from this IP, please try again later.');
   },
