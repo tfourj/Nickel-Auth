@@ -81,6 +81,14 @@ loadApiKeys(apiKeys);
 // Watch for changes in api_keys.json
 chokidar.watch('./api_keys.json').on('change', () => loadApiKeys(apiKeys));
 
+const versionGauge = new client.Gauge({
+  name: 'server_version_info',
+  help: 'Server version information',
+  labelNames: ['version']
+});
+register.registerMetric(versionGauge);
+versionGauge.labels(version).set(1);
+
 const apiCallCounter = new client.Counter({
   name: 'api_call_total',
   help: 'Total number of API calls (excluding /metrics endpoints)',
