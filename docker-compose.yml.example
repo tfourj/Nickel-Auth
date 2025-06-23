@@ -1,11 +1,9 @@
 services:
   nickel-auth:
-    image: tfourj/nickel-auth
+    image: tfourj/nickel-auth:latest
     container_name: nickel-auth
     ports:
-      - '3000:3000' # Use 127.0.0.1:3110:3110 if you want to use reverse proxy
-    expose:
-      - "${PORT}"
+      - '3000:3000' # Use 127.0.0.1:3000:3000 if you want to use reverse proxy
     restart: unless-stopped
     volumes:
       - ./api_keys.json:/app/api_keys.json:ro
