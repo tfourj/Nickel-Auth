@@ -75,7 +75,7 @@ You can also view a list of public instances at [Nickel's Website](https://getni
    CHALLENGE_CACHE_TTL=300
    AUTH_CACHE_TTL=600
    NODE_ENV=production
-   MONITORING_ORIGIN=*
+   MONITORING_ORIGIN=http://example.com or false
    ```
 
 4. **Create API keys configuration file**
@@ -116,7 +116,7 @@ You can also view a list of public instances at [Nickel's Website](https://getni
 - `CHALLENGE_CACHE_TTL`: Challenge expiration time in seconds (default: 300)
 - `AUTH_CACHE_TTL`: Authentication token expiration time in seconds (default: 600)
 - `NODE_ENV`: Set to `production` for production deployment
-- `MONITORING_ORIGIN`: CORS origin for metrics endpoint (default: *)
+- `MONITORING_ORIGIN`: CORS origin for metrics endpoint (default: false)
 
 #### API Keys Configuration
 The `api_keys.json` file maps Cobalt API server URLs to their respective authentication keys. Each entry should be in the format:

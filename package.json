@@ -1,6 +1,6 @@
 {
   "name": "nickel-auth",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Proxy server used beetween iOS app Nickel and Cobalt.Tools API server",
   "main": "server.js",
   "type": "module",

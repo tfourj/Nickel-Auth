@@ -17,6 +17,8 @@ import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceTo
 
 dotenv.config();
 
+const version = '2.0.0';
+
 const register = client.register;
 
 const startTime = Date.now();
@@ -307,7 +309,7 @@ app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
 }));
 
 const monitoringCorsFn = cors({
-  origin: process.env.MONITORING_ORIGIN || '*',
+  origin: process.env.MONITORING_ORIGIN || 'false',
   methods: ['GET'],
   allowedHeaders: ['Content-Type']
 });
@@ -335,5 +337,5 @@ app.use((req, res, next) => {
 });
 
 app.listen(port, () => {
-  console.log(`Nickel proxy running on port ${port}`);
+  console.log(`Nickel-Auth (v${version}) running on port: ${port}`);
 });
