@@ -17,7 +17,7 @@ import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceTo
 
 dotenv.config();
 
-const version = '2.0.0';
+const version = '2.0.1';
 
 const register = client.register;
 
