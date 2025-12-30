@@ -17,7 +17,16 @@ import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceTo
 
 dotenv.config();
 
-const version = '2.0.1';
+const version = (() => {
+  try {
+    const raw = fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8');
+    const pkg = JSON.parse(raw);
+    return typeof pkg.version === 'string' ? pkg.version : 'unknown';
+  } catch (err) {
+    console.warn('Failed to read package.json version:', err.message);
+    return 'unknown';
+  }
+})();
 
 const register = client.register;
 
