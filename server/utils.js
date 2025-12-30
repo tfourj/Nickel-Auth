@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import fs from 'fs';
 import { authCache } from './server.js';
 
@@ -22,8 +22,18 @@ export function addIpToBannedList(ip) {
 }
 
 function getClientIp(req) {
-  const forwardedFor = req.headers['cf-connecting-ip'];
-  return forwardedFor ? forwardedFor.split(',')[0].trim() : req.ip;
+  const cfConnectingIp = req.headers['cf-connecting-ip'];
+  if (cfConnectingIp) return cfConnectingIp.split(',')[0].trim();
+
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) return forwardedFor.split(',')[0].trim();
+
+  return req.ip;
+}
+
+function getRateLimitKey(req) {
+  const ip = getClientIp(req);
+  return ipKeyGenerator(ip || 'unknown');
 }
 
 // Main rate limiter for all requests
@@ -32,9 +42,9 @@ export const limiter = rateLimit({
   max: maxLimitReq,
   message: 'Too many requests from this IP, please try again later.',
   headers: true,
-  keyGenerator: getClientIp,
+  keyGenerator: getRateLimitKey,
   handler: (req, res, next) => {
-    const ip = req.headers['cf-connecting-ip'] || req.ip;
+    const ip = getClientIp(req);
     addIpToBannedList(ip);
     res.status(429).send('Too many requests from this IP, please try again later.');
   },
@@ -46,7 +56,7 @@ export const challengeLimiter = rateLimit({
   max: 5, 
   message: 'Too many challenge requests, please try again later.',
   standardHeaders: true,
-  keyGenerator: getClientIp
+  keyGenerator: getRateLimitKey
 });
 
 // Input validation function
