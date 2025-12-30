@@ -1,4 +1,10 @@
 {
   "https://cobaltapi.server.here/": "YOUR_SECRET_KEY_HERE",
-  "https://cobalt.tools.goated/": "ANOTHER_KEY"
+  "https://cobalt.tools.goated/": "ANOTHER_KEY",
+  "https://cobalt-main.example/": {
+    "servers": {
+      "https://cobalt-one.example/": "COBALT_ONE_KEY",
+      "https://cobalt-two.example/": "COBALT_TWO_KEY"
+    }
+  }
 }

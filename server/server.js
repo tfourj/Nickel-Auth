@@ -60,6 +60,7 @@ const authTTL = parseInt(process.env.AUTH_CACHE_TTL) || 600;
 export const authCache = new NodeCache({ stdTTL: authTTL }); // 10 minutes
 export const challengeCache = new NodeCache({ stdTTL: challengeTTL }); // 5 minutes
 export let apiKeys = {};
+const serverUsage = new Map();
 
 app.use(bodyParser.json());
 
@@ -176,6 +177,43 @@ function trackProxyResponseTime(handler) {
   };
 }
 
+function pickLeastUsedServer(servers) {
+  let selected = null;
+  let lowest = Infinity;
+
+  for (const server of servers) {
+    if (!server || !server.url) continue;
+    const count = serverUsage.get(server.url) || 0;
+    if (count < lowest) {
+      lowest = count;
+      selected = server;
+    }
+  }
+
+  return selected;
+}
+
+function resolveApiTarget(apiUrl, apiEntry) {
+  if (typeof apiEntry === 'string') {
+    return { targetUrl: apiUrl, authKey: apiEntry, balanced: false };
+  }
+
+  if (!apiEntry || typeof apiEntry !== 'object' || !Array.isArray(apiEntry.servers)) {
+    throw new Error('API not added to authentication server.');
+  }
+
+  const selected = pickLeastUsedServer(apiEntry.servers);
+  if (!selected || !selected.url) {
+    throw new Error('No servers configured for this API.');
+  }
+  if (!selected.key) {
+    throw new Error('Missing API key for selected server.');
+  }
+
+  serverUsage.set(selected.url, (serverUsage.get(selected.url) || 0) + 1);
+  return { targetUrl: selected.url, authKey: selected.key, balanced: true };
+}
+
 // --- ENDPOINTS ---
 
 app.get('/ios-challenge', challengeLimiter, trackAuthResponseTime((req, res) => {
@@ -264,16 +302,21 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
     // Normalize the URL by removing trailing slash
     const normalizedUrl = apiUrl.replace(/\/+$/, '');
     
-    const customAuth = apiKeys[normalizedUrl];
-    if (!customAuth) {
+    const apiEntry = apiKeys[normalizedUrl];
+    if (!apiEntry) {
       throw new Error('API not added to authentication server.');
     }
 
-    console.log(`Making request to Cobalt API for: ${domain} to instance url: ${apiUrl}`);
+    const { targetUrl, authKey, balanced } = resolveApiTarget(normalizedUrl, apiEntry);
+    if (balanced) {
+      console.log(`Load balancing ${normalizedUrl} -> ${targetUrl}`);
+    }
 
-    const cobaltRes = await axios.post(apiUrl, filteredBody, {
+    console.log(`Making request to Cobalt API for: ${domain} to instance url: ${targetUrl}`);
+
+    const cobaltRes = await axios.post(targetUrl, filteredBody, {
       headers: {
-        Authorization: `Api-Key ${customAuth}`,
+        Authorization: `Api-Key ${authKey}`,
         Accept: 'application/json',
       },
     });

@@ -65,14 +65,70 @@ export function loadApiKeys(apiKeysObj) {
   try {
     const raw = fs.readFileSync('./api_keys.json');
     const rawKeys = JSON.parse(raw);
+    const normalizeUrl = (url) => (typeof url === 'string' ? url.replace(/\/+$/, '') : url);
     
     // Clear the existing keys
     Object.keys(apiKeysObj).forEach(key => delete apiKeysObj[key]);
     
     // Normalize keys by removing trailing slashes
-    Object.keys(rawKeys).forEach(key => {
-      const normalizedKey = key.replace(/\/+$/, '');
-      apiKeysObj[normalizedKey] = rawKeys[key];
+    Object.entries(rawKeys).forEach(([key, value]) => {
+      const normalizedKey = normalizeUrl(key);
+
+      if (typeof value === 'string') {
+        apiKeysObj[normalizedKey] = value;
+        return;
+      }
+
+      if (value && typeof value === 'object') {
+        if (Array.isArray(value.servers)) {
+          const servers = value.servers
+            .map((server) => {
+              if (typeof server === 'string') {
+                return {
+                  url: normalizeUrl(server),
+                  key: typeof value.key === 'string' ? value.key : undefined
+                };
+              }
+              if (server && typeof server === 'object') {
+                return {
+                  url: normalizeUrl(server.url),
+                  key: typeof server.key === 'string'
+                    ? server.key
+                    : (typeof value.key === 'string' ? value.key : undefined)
+                };
+              }
+              return null;
+            })
+            .filter((entry) => entry && entry.url && entry.key);
+
+          if (servers.length > 0) {
+            apiKeysObj[normalizedKey] = { servers };
+            return;
+          }
+        } else if (value.servers && typeof value.servers === 'object') {
+          const servers = Object.entries(value.servers)
+            .filter(([serverUrl]) => typeof serverUrl === 'string' && serverUrl.trim() !== '')
+            .map(([serverUrl, serverKey]) => ({
+              url: normalizeUrl(serverUrl),
+              key: typeof serverKey === 'string'
+                ? serverKey
+                : (typeof value.key === 'string' ? value.key : undefined)
+            }))
+            .filter((entry) => entry.url && entry.key);
+
+          if (servers.length > 0) {
+            apiKeysObj[normalizedKey] = { servers };
+            return;
+          }
+        }
+
+        if (typeof value.key === 'string') {
+          apiKeysObj[normalizedKey] = value.key;
+          return;
+        }
+      }
+
+      console.warn(`Skipping invalid api_keys.json entry: ${key}`);
     });
     
     console.log('🔁 Reloaded API keys');

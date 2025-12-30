@@ -125,6 +125,17 @@ The `api_keys.json` file maps Cobalt API server URLs to their respective authent
   "https://cobalt-server-url": "api-key-for-that-server"
 }
 ```
+For load balancing, you can provide per-server keys (or a shared key) and a list of backend servers. The least-used server is selected per request:
+```json
+{
+  "https://cobalt-main.example": {
+    "servers": {
+      "https://cobalt-one.example": "cobalt-one-key",
+      "https://cobalt-two.example": "cobalt-two-key"
+    }
+  }
+}
+```
 
 ### Monitoring
 - Access Prometheus metrics at `/metrics` endpoint
