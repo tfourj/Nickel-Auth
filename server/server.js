@@ -4,6 +4,7 @@ import axios from 'axios';
 import bodyParser from 'body-parser';
 import NodeCache from 'node-cache';
 import fs from 'fs';
+import path from 'path';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import chokidar from 'chokidar';
@@ -18,14 +19,26 @@ import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceTo
 dotenv.config();
 
 const version = (() => {
-  try {
-    const raw = fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8');
-    const pkg = JSON.parse(raw);
-    return typeof pkg.version === 'string' ? pkg.version : 'unknown';
-  } catch (err) {
-    console.warn('Failed to read package.json version:', err.message);
-    return 'unknown';
+  const candidates = [
+    path.join(process.cwd(), 'package.json'),
+    new URL('./package.json', import.meta.url),
+    new URL('../package.json', import.meta.url)
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const raw = fs.readFileSync(candidate, 'utf8');
+      const pkg = JSON.parse(raw);
+      if (typeof pkg.version === 'string' && pkg.version.trim() !== '') {
+        return pkg.version;
+      }
+    } catch (err) {
+      console.warn('Failed to read package.json version:', err.message);
+    }
   }
+
+  return 'unknown';
 })();
 
 const register = client.register;
