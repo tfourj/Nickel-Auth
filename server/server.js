@@ -83,6 +83,11 @@ export const authCache = new NodeCache({ stdTTL: authTTL }); // 10 minutes
 export const challengeCache = new NodeCache({ stdTTL: challengeTTL }); // 5 minutes
 export let apiKeys = {};
 const serverUsage = new Map();
+const healthCacheTtl = parseInt(process.env.LB_HEALTHCHECK_CACHE_TTL) || 10;
+const healthCheckTimeoutMs = parseInt(process.env.LB_HEALTHCHECK_TIMEOUT_MS) || 1500;
+const healthCheckPath = process.env.LB_HEALTHCHECK_PATH || '/';
+const healthCheckMethod = (process.env.LB_HEALTHCHECK_METHOD || 'GET').toUpperCase();
+const healthCache = new NodeCache({ stdTTL: healthCacheTtl });
 
 app.use(bodyParser.json());
 
@@ -215,7 +220,34 @@ function pickLeastUsedServer(servers) {
   return selected;
 }
 
-function resolveApiTarget(apiUrl, apiEntry) {
+async function isServerUp(serverUrl) {
+  if (!serverUrl || typeof serverUrl !== 'string') return false;
+
+  const cached = healthCache.get(serverUrl);
+  if (typeof cached === 'boolean') return cached;
+
+  try {
+    const healthUrl = new URL(healthCheckPath, serverUrl).toString();
+    const res = await axios.request({
+      method: healthCheckMethod,
+      url: healthUrl,
+      timeout: healthCheckTimeoutMs,
+      validateStatus: () => true
+    });
+    const up = res.status < 500;
+    healthCache.set(serverUrl, up);
+    if (!up) {
+      console.warn(`Health check failed for ${serverUrl} with status ${res.status}`);
+    }
+    return up;
+  } catch (err) {
+    console.warn(`Health check failed for ${serverUrl}: ${err.message}`);
+    healthCache.set(serverUrl, false);
+    return false;
+  }
+}
+
+async function resolveApiTarget(apiUrl, apiEntry) {
   if (typeof apiEntry === 'string') {
     return { targetUrl: apiUrl, authKey: apiEntry, balanced: false };
   }
@@ -224,9 +256,16 @@ function resolveApiTarget(apiUrl, apiEntry) {
     throw new Error('API not added to authentication server.');
   }
 
-  const selected = pickLeastUsedServer(apiEntry.servers);
+  const healthChecks = await Promise.all(
+    apiEntry.servers.map(async (server) => ({
+      server,
+      up: await isServerUp(server?.url)
+    }))
+  );
+  const healthyServers = healthChecks.filter((entry) => entry.up).map((entry) => entry.server);
+  const selected = pickLeastUsedServer(healthyServers);
   if (!selected || !selected.url) {
-    throw new Error('No servers configured for this API.');
+    throw new Error('No healthy servers available for this API.');
   }
   if (!selected.key) {
     throw new Error('Missing API key for selected server.');
@@ -329,7 +368,7 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
       throw new Error('API not added to authentication server.');
     }
 
-    const { targetUrl, authKey, balanced } = resolveApiTarget(normalizedUrl, apiEntry);
+    const { targetUrl, authKey, balanced } = await resolveApiTarget(normalizedUrl, apiEntry);
     if (balanced) {
       console.log(`Load balancing ${normalizedUrl} -> ${targetUrl}`);
     }
