@@ -465,6 +465,7 @@ const monitoringCorsFn = cors({
 
 app.get('/metrics', monitoringCorsFn, async (req, res) => {
   try {
+    console.debug(`Metrics endpoint accessed (${formatRequestIp(req)})`);
     const uptime = (Date.now() - startTime) / 1000;
     uptimeGauge.set(uptime);
 
@@ -476,7 +477,7 @@ app.get('/metrics', monitoringCorsFn, async (req, res) => {
 });
 
 app.use((req, res, next) => {
-  console.debug(`404 Not Found: ${req.method} ${req.originalUrl}`);
+  console.debug(`404 Not Found: ${req.method} ${req.originalUrl} (${formatRequestIp(req)})`);
   // If it's a GET, return a JSON error
   if (req.method === 'GET') {
     return res.status(404).json({ error: 'Not found' });
