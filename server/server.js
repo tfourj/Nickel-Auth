@@ -14,7 +14,7 @@ import xss from 'xss';
 import helmet from 'helmet';
 import client from 'prom-client';
 import cors from 'cors';
-import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceToken, extractDomain } from './utils.js';
+import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceToken, extractDomain, getClientIp } from './utils.js';
 
 dotenv.config();
 
@@ -75,6 +75,10 @@ console.log('----------------------------------------');
 const app = express();
 const port = process.env.PORT || 3200;
 app.set('trust proxy', true);
+const formatRequestIp = (req) => {
+  const ip = getClientIp(req);
+  return `ip=${ip && typeof ip === 'string' ? ip : 'unknown'}`;
+};
 
 const challengeTTL = parseInt(process.env.CHALLENGE_CACHE_TTL) || 300;
 const authTTL = parseInt(process.env.AUTH_CACHE_TTL) || 600;
@@ -280,12 +284,12 @@ async function resolveApiTarget(apiUrl, apiEntry) {
 app.get('/ios-challenge', challengeLimiter, trackAuthResponseTime((req, res) => {
     const challenge = uuidv4();
     challengeCache.set(challenge, true);
-    console.log(`Challenge was requested, returning ${challenge}`);
+    console.log(`Challenge was requested, returning ${challenge} (${formatRequestIp(req)})`);
     res.send(JSON.stringify({ challenge }));
 }));
 
 app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
-  console.log('Auth request received');
+  console.log(`Auth request received (${formatRequestIp(req)})`);
   try {
     const { attestation, challenge, keyId } = req.body;
 
@@ -304,7 +308,7 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
 
     await challengeCache.del(challenge);
 
-    console.log(`Validating attestation - Challenge: ${challenge.substring(0, 8)}..., KeyId: ${keyId.substring(0, 8)}..., Attestation: ${attestation.substring(0, 16)}...`);
+    console.log(`Validating attestation - Challenge: ${challenge.substring(0, 8)}..., KeyId: ${keyId.substring(0, 8)}..., Attestation: ${attestation.substring(0, 16)}... (${formatRequestIp(req)})`);
     
     const result = await Promise.resolve(verifyAttestation({
       attestation: Buffer.from(attestation, 'base64'),
@@ -315,7 +319,7 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
       allowDevelopmentEnvironment: process.env.NODE_ENV !== 'production',
     }));
 
-    console.log('Attestation validated successfully');
+    console.log(`Attestation validated successfully (${formatRequestIp(req)})`);
 
     const tempKey = await new Promise((resolve, reject) => {
       jwt.sign(
@@ -332,7 +336,7 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
 
     res.status(200).json({ tempKey });
   } catch (error) {
-    console.error('Error in /ios-auth:', error.message);
+    console.error(`Error in /ios-auth (${formatRequestIp(req)}):`, error.message);
     res.status(400).json({ error: error.message });
   }
 }));
@@ -370,10 +374,10 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
 
     const { targetUrl, authKey, balanced } = await resolveApiTarget(normalizedUrl, apiEntry);
     if (balanced) {
-      console.log(`Load balancing ${normalizedUrl} -> ${targetUrl}`);
+      console.log(`Load balancing ${normalizedUrl} -> ${targetUrl} (${formatRequestIp(req)})`);
     }
 
-    console.log(`Making request to Cobalt API for: ${domain} to instance url: ${targetUrl}`);
+    console.log(`Making request to Cobalt API for: ${domain} to instance url: ${targetUrl} (${formatRequestIp(req)})`);
 
     const cobaltRes = await axios.post(targetUrl, filteredBody, {
       headers: {
@@ -384,10 +388,10 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
     res.status(cobaltRes.status).json(cobaltRes.data);
   } catch (err) {
     if (err.response) {
-      console.error('Error in /ios-request:', err.response.data);
+      console.error(`Error in /ios-request (${formatRequestIp(req)}):`, err.response.data);
       res.status(err.response.status).json(err.response.data);
     } else {
-      console.error('Error in /ios-request:', err.message);
+      console.error(`Error in /ios-request (${formatRequestIp(req)}):`, err.message);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -396,7 +400,7 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
 app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const [authType, authKey] = authHeader.split(' ');
-  console.log(`Validating device token: ${authKey.substring(0, 8)}...`);
+  console.log(`Validating device token: ${authKey.substring(0, 8)}... (${formatRequestIp(req)})`);
 
   if (authType !== 'Nickel-Auth' || !authKey) {
     return res.status(400).json({ error: 'Invalid or missing authorization header.' });
@@ -410,12 +414,12 @@ app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
     if (hasAuth) {
       return res.status(200).json({ valid: true });
     } else {
-      console.log(`Device token validation failed - not found in cache: ${authKey.substring(0, 8)}...`);
+      console.log(`Device token validation failed - not found in cache: ${authKey.substring(0, 8)}... (${formatRequestIp(req)})`);
       return res.status(403).json({ valid: false, error: 'Key not found in cache.' });
     }
   } catch (error) {
-    console.error('Auth key validation failed:', error.message);
-    console.error(`Failed device token: ${authKey.substring(0, 8)}...`);
+    console.error(`Auth key validation failed (${formatRequestIp(req)}):`, error.message);
+    console.error(`Failed device token: ${authKey.substring(0, 8)}... (${formatRequestIp(req)})`);
     return res.status(401).json({ valid: false, error: 'Invalid or expired authKey.' });
   }
 }));

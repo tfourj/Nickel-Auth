@@ -21,7 +21,7 @@ export function addIpToBannedList(ip) {
   }
 }
 
-function getClientIp(req) {
+export function getClientIp(req) {
   const cfConnectingIp = req.headers['cf-connecting-ip'];
   if (cfConnectingIp) return cfConnectingIp.split(',')[0].trim();
 
