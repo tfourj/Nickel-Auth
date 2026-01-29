@@ -138,7 +138,7 @@ export function loadApiKeys(apiKeysObj) {
         }
       }
 
-      console.warn(`Skipping invalid api_keys.json entry: ${key}`);
+      console.log(`Skipping invalid api_keys.json entry: ${key}`);
     });
     
     console.log('🔁 Reloaded API keys');

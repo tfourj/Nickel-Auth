@@ -67,15 +67,16 @@ You can also view a list of public instances at [Nickel's Website](https://getni
    
    Add your configuration (replace with your actual values):
    ```env
-   JWT_SECRET=your-super-secure-jwt-secret-here
-   APPLE_TEAM_ID=your-apple-team-id
-   APPLE_BUNDLE_ID=your.app.bundle.id
-   PORT=3000
-   RATE_LIMIT=50
-   CHALLENGE_CACHE_TTL=300
-   AUTH_CACHE_TTL=600
-   NODE_ENV=production
-   MONITORING_ORIGIN=http://example.com or false
+    JWT_SECRET=your-super-secure-jwt-secret-here
+    APPLE_TEAM_ID=your-apple-team-id
+    APPLE_BUNDLE_ID=your.app.bundle.id
+    PORT=3000
+    RATE_LIMIT=50
+    CHALLENGE_CACHE_TTL=300
+    AUTH_CACHE_TTL=600
+    NODE_ENV=production
+    MONITORING_ORIGIN=http://example.com or false
+    LOG_LEVEL=log
    ```
 
 4. **Create API keys configuration file**
@@ -117,6 +118,7 @@ You can also view a list of public instances at [Nickel's Website](https://getni
 - `AUTH_CACHE_TTL`: Authentication token expiration time in seconds (default: 600)
 - `NODE_ENV`: Set to `production` for production deployment
 - `MONITORING_ORIGIN`: CORS origin for metrics endpoint (default: false)
+- `LOG_LEVEL`: Logging verbosity (`log`, `warn`, `debug`); `warn` and `debug` add on top of `log` output (errors always log)
 
 #### API Keys Configuration
 The `api_keys.json` file maps Cobalt API server URLs to their respective authentication keys. Each entry should be in the format:

@@ -18,6 +18,39 @@ import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceTo
 
 dotenv.config();
 
+const LOG_LEVELS = {
+  log: 1,
+  info: 1,
+  warn: 2,
+  debug: 3
+};
+const configuredLogLevel = String(process.env.LOG_LEVEL || 'log').toLowerCase();
+const logThreshold = LOG_LEVELS[configuredLogLevel] ?? LOG_LEVELS.log;
+const baseConsole = {
+  log: console.log.bind(console),
+  info: (console.info || console.log).bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: (console.debug || console.log).bind(console)
+};
+const shouldLog = (level) => {
+  if (level === 'error') return true;
+  const rank = LOG_LEVELS[level];
+  return typeof rank === 'number' && rank <= logThreshold;
+};
+console.log = (...args) => {
+  if (shouldLog('log')) baseConsole.log(...args);
+};
+console.info = (...args) => {
+  if (shouldLog('info')) baseConsole.info(...args);
+};
+console.warn = (...args) => {
+  if (shouldLog('warn')) baseConsole.warn(...args);
+};
+console.debug = (...args) => {
+  if (shouldLog('debug')) baseConsole.debug(...args);
+};
+
 const version = (() => {
   const candidates = [
     path.join(process.cwd(), 'package.json'),
@@ -34,7 +67,7 @@ const version = (() => {
         return pkg.version;
       }
     } catch (err) {
-      console.warn('Failed to read package.json version:', err.message);
+      console.log('Failed to read package.json version:', err.message);
     }
   }
 
@@ -241,11 +274,11 @@ async function isServerUp(serverUrl) {
     const up = res.status < 500;
     healthCache.set(serverUrl, up);
     if (!up) {
-      console.warn(`Health check failed for ${serverUrl} with status ${res.status}`);
+      console.log(`Health check failed for ${serverUrl} with status ${res.status}`);
     }
     return up;
   } catch (err) {
-    console.warn(`Health check failed for ${serverUrl}: ${err.message}`);
+    console.log(`Health check failed for ${serverUrl}: ${err.message}`);
     healthCache.set(serverUrl, false);
     return false;
   }
@@ -443,7 +476,7 @@ app.get('/metrics', monitoringCorsFn, async (req, res) => {
 });
 
 app.use((req, res, next) => {
-  //console.log(`404 Not Found: ${req.method} ${req.originalUrl}`);
+  console.debug(`404 Not Found: ${req.method} ${req.originalUrl}`);
   // If it's a GET, return a JSON error
   if (req.method === 'GET') {
     return res.status(404).json({ error: 'Not found' });
