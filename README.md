@@ -77,6 +77,7 @@ You can also view a list of public instances at [Nickel's Website](https://getni
     NODE_ENV=production
     MONITORING_ORIGIN=http://example.com or false
     LOG_LEVEL=log
+    LOG_FILTERED_IPS=
    ```
 
 4. **Create API keys configuration file**
@@ -119,6 +120,7 @@ You can also view a list of public instances at [Nickel's Website](https://getni
 - `NODE_ENV`: Set to `production` for production deployment
 - `MONITORING_ORIGIN`: CORS origin for metrics endpoint (default: false)
 - `LOG_LEVEL`: Logging verbosity (`log`, `warn`, `debug`); `warn` and `debug` add on top of `log` output (errors always log)
+- `LOG_FILTERED_IPS`: Comma- or space-separated list of IPs to hide from request logs (exact match only)
 
 #### API Keys Configuration
 The `api_keys.json` file maps Cobalt API server URLs to their respective authentication keys. Each entry should be in the format:

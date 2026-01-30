@@ -108,9 +108,29 @@ console.log('----------------------------------------');
 const app = express();
 const port = process.env.PORT || 3200;
 app.set('trust proxy', true);
+const parseIpList = (value) => {
+  if (!value || typeof value !== 'string') return new Set();
+  return new Set(
+    value
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
+};
+const filteredLogIps = parseIpList(process.env.LOG_FILTERED_IPS);
+const isLogFilteredIp = (req) => {
+  if (!filteredLogIps.size) return false;
+  const ip = getClientIp(req);
+  return Boolean(ip && filteredLogIps.has(ip));
+};
 const formatRequestIp = (req) => {
   const ip = getClientIp(req);
   return `ip=${ip && typeof ip === 'string' ? ip : 'unknown'}`;
+};
+const logWithRequestIp = (level, req, message, ...args) => {
+  if (isLogFilteredIp(req)) return;
+  const ipLabel = formatRequestIp(req);
+  console[level](`${message} (${ipLabel})`, ...args);
 };
 
 const challengeTTL = parseInt(process.env.CHALLENGE_CACHE_TTL) || 300;
@@ -317,12 +337,12 @@ async function resolveApiTarget(apiUrl, apiEntry) {
 app.get('/ios-challenge', challengeLimiter, trackAuthResponseTime((req, res) => {
     const challenge = uuidv4();
     challengeCache.set(challenge, true);
-    console.log(`Challenge was requested, returning ${challenge} (${formatRequestIp(req)})`);
+    logWithRequestIp('log', req, `Challenge was requested, returning ${challenge}`);
     res.send(JSON.stringify({ challenge }));
 }));
 
 app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
-  console.log(`Auth request received (${formatRequestIp(req)})`);
+  logWithRequestIp('log', req, 'Auth request received');
   try {
     const { attestation, challenge, keyId } = req.body;
 
@@ -341,7 +361,11 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
 
     await challengeCache.del(challenge);
 
-    console.log(`Validating attestation - Challenge: ${challenge.substring(0, 8)}..., KeyId: ${keyId.substring(0, 8)}..., Attestation: ${attestation.substring(0, 16)}... (${formatRequestIp(req)})`);
+    logWithRequestIp(
+      'log',
+      req,
+      `Validating attestation - Challenge: ${challenge.substring(0, 8)}..., KeyId: ${keyId.substring(0, 8)}..., Attestation: ${attestation.substring(0, 16)}...`
+    );
     
     const result = await Promise.resolve(verifyAttestation({
       attestation: Buffer.from(attestation, 'base64'),
@@ -352,7 +376,7 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
       allowDevelopmentEnvironment: process.env.NODE_ENV !== 'production',
     }));
 
-    console.log(`Attestation validated successfully (${formatRequestIp(req)})`);
+    logWithRequestIp('log', req, 'Attestation validated successfully');
 
     const tempKey = await new Promise((resolve, reject) => {
       jwt.sign(
@@ -369,7 +393,7 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
 
     res.status(200).json({ tempKey });
   } catch (error) {
-    console.error(`Error in /ios-auth (${formatRequestIp(req)}):`, error.message);
+    logWithRequestIp('error', req, 'Error in /ios-auth:', error.message);
     res.status(400).json({ error: error.message });
   }
 }));
@@ -407,10 +431,10 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
 
     const { targetUrl, authKey, balanced } = await resolveApiTarget(normalizedUrl, apiEntry);
     if (balanced) {
-      console.log(`Load balancing ${normalizedUrl} -> ${targetUrl} (${formatRequestIp(req)})`);
+      logWithRequestIp('log', req, `Load balancing ${normalizedUrl} -> ${targetUrl}`);
     }
 
-    console.log(`Making request to Cobalt API for: ${domain} to instance url: ${targetUrl} (${formatRequestIp(req)})`);
+    logWithRequestIp('log', req, `Making request to Cobalt API for: ${domain} to instance url: ${targetUrl}`);
 
     const cobaltRes = await axios.post(targetUrl, filteredBody, {
       headers: {
@@ -421,10 +445,10 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
     res.status(cobaltRes.status).json(cobaltRes.data);
   } catch (err) {
     if (err.response) {
-      console.error(`Error in /ios-request (${formatRequestIp(req)}):`, err.response.data);
+      logWithRequestIp('error', req, 'Error in /ios-request:', err.response.data);
       res.status(err.response.status).json(err.response.data);
     } else {
-      console.error(`Error in /ios-request (${formatRequestIp(req)}):`, err.message);
+      logWithRequestIp('error', req, 'Error in /ios-request:', err.message);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -433,7 +457,7 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
 app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const [authType, authKey] = authHeader.split(' ');
-  console.log(`Validating device token: ${authKey.substring(0, 8)}... (${formatRequestIp(req)})`);
+  logWithRequestIp('log', req, `Validating device token: ${authKey.substring(0, 8)}...`);
 
   if (authType !== 'Nickel-Auth' || !authKey) {
     return res.status(400).json({ error: 'Invalid or missing authorization header.' });
@@ -447,12 +471,12 @@ app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
     if (hasAuth) {
       return res.status(200).json({ valid: true });
     } else {
-      console.log(`Device token validation failed - not found in cache: ${authKey.substring(0, 8)}... (${formatRequestIp(req)})`);
+      logWithRequestIp('log', req, `Device token validation failed - not found in cache: ${authKey.substring(0, 8)}...`);
       return res.status(403).json({ valid: false, error: 'Key not found in cache.' });
     }
   } catch (error) {
-    console.error(`Auth key validation failed (${formatRequestIp(req)}):`, error.message);
-    console.error(`Failed device token: ${authKey.substring(0, 8)}... (${formatRequestIp(req)})`);
+    logWithRequestIp('error', req, 'Auth key validation failed:', error.message);
+    logWithRequestIp('error', req, `Failed device token: ${authKey.substring(0, 8)}...`);
     return res.status(401).json({ valid: false, error: 'Invalid or expired authKey.' });
   }
 }));
@@ -465,7 +489,7 @@ const monitoringCorsFn = cors({
 
 app.get('/metrics', monitoringCorsFn, async (req, res) => {
   try {
-    console.debug(`Metrics endpoint accessed (${formatRequestIp(req)})`);
+    logWithRequestIp('debug', req, 'Metrics endpoint accessed');
     const uptime = (Date.now() - startTime) / 1000;
     uptimeGauge.set(uptime);
 
@@ -477,7 +501,7 @@ app.get('/metrics', monitoringCorsFn, async (req, res) => {
 });
 
 app.use((req, res, next) => {
-  console.debug(`404 Not Found: ${req.method} ${req.originalUrl} (${formatRequestIp(req)})`);
+  logWithRequestIp('debug', req, `404 Not Found: ${req.method} ${req.originalUrl}`);
   // If it's a GET, return a JSON error
   if (req.method === 'GET') {
     return res.status(404).json({ error: 'Not found' });
