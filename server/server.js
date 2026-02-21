@@ -277,6 +277,22 @@ function pickLeastUsedServer(servers) {
   return selected;
 }
 
+function sortServersByUsage(servers) {
+  return [...servers]
+    .filter((server) => server && server.url)
+    .sort((a, b) => (serverUsage.get(a.url) || 0) - (serverUsage.get(b.url) || 0));
+}
+
+function isJsonStatusError(payload) {
+  return Boolean(
+    payload &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    typeof payload.status === 'string' &&
+    payload.status.toLowerCase() === 'error'
+  );
+}
+
 async function isServerUp(serverUrl) {
   if (!serverUrl || typeof serverUrl !== 'string') return false;
 
@@ -304,9 +320,9 @@ async function isServerUp(serverUrl) {
   }
 }
 
-async function resolveApiTarget(apiUrl, apiEntry) {
+async function resolveApiTargets(apiUrl, apiEntry) {
   if (typeof apiEntry === 'string') {
-    return { targetUrl: apiUrl, authKey: apiEntry, balanced: false };
+    return [{ targetUrl: apiUrl, authKey: apiEntry, balanced: false }];
   }
 
   if (!apiEntry || typeof apiEntry !== 'object' || !Array.isArray(apiEntry.servers)) {
@@ -324,12 +340,19 @@ async function resolveApiTarget(apiUrl, apiEntry) {
   if (!selected || !selected.url) {
     throw new Error('No healthy servers available for this API.');
   }
-  if (!selected.key) {
+  const orderedTargets = sortServersByUsage(healthyServers)
+    .filter((server) => server.key)
+    .map((server) => ({
+      targetUrl: server.url,
+      authKey: server.key,
+      balanced: true
+    }));
+
+  if (!orderedTargets.length) {
     throw new Error('Missing API key for selected server.');
   }
 
-  serverUsage.set(selected.url, (serverUsage.get(selected.url) || 0) + 1);
-  return { targetUrl: selected.url, authKey: selected.key, balanced: true };
+  return orderedTargets;
 }
 
 // --- ENDPOINTS ---
@@ -429,20 +452,48 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
       throw new Error('API not added to authentication server.');
     }
 
-    const { targetUrl, authKey, balanced } = await resolveApiTarget(normalizedUrl, apiEntry);
-    if (balanced) {
-      logWithRequestIp('log', req, `Load balancing ${normalizedUrl} -> ${targetUrl}`);
+    const targets = await resolveApiTargets(normalizedUrl, apiEntry);
+    let lastServerResponse = null;
+
+    for (let index = 0; index < targets.length; index++) {
+      const { targetUrl, authKey, balanced } = targets[index];
+      const hasNextTarget = index < targets.length - 1;
+      serverUsage.set(targetUrl, (serverUsage.get(targetUrl) || 0) + 1);
+
+      if (balanced) {
+        logWithRequestIp('log', req, `Load balancing ${normalizedUrl} -> ${targetUrl}`);
+      }
+      logWithRequestIp('log', req, `Making request to Cobalt API for: ${domain} to instance url: ${targetUrl}`);
+
+      try {
+        const cobaltRes = await axios.post(targetUrl, filteredBody, {
+          headers: {
+            Authorization: `Api-Key ${authKey}`,
+            Accept: 'application/json',
+          },
+        });
+
+        if (isJsonStatusError(cobaltRes.data) && hasNextTarget) {
+          logWithRequestIp('warn', req, `Server ${targetUrl} returned JSON status=error, trying next server`);
+          lastServerResponse = { status: cobaltRes.status, data: cobaltRes.data };
+          continue;
+        }
+
+        return res.status(cobaltRes.status).json(cobaltRes.data);
+      } catch (err) {
+        if (err.response && isJsonStatusError(err.response.data) && hasNextTarget) {
+          logWithRequestIp('warn', req, `Server ${targetUrl} returned JSON status=error, trying next server`);
+          lastServerResponse = { status: err.response.status, data: err.response.data };
+          continue;
+        }
+        throw err;
+      }
     }
 
-    logWithRequestIp('log', req, `Making request to Cobalt API for: ${domain} to instance url: ${targetUrl}`);
-
-    const cobaltRes = await axios.post(targetUrl, filteredBody, {
-      headers: {
-        Authorization: `Api-Key ${authKey}`,
-        Accept: 'application/json',
-      },
-    });
-    res.status(cobaltRes.status).json(cobaltRes.data);
+    if (lastServerResponse) {
+      return res.status(lastServerResponse.status).json(lastServerResponse.data);
+    }
+    throw new Error('No server response available.');
   } catch (err) {
     if (err.response) {
       logWithRequestIp('error', req, 'Error in /ios-request:', err.response.data);
