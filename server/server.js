@@ -293,6 +293,25 @@ function isJsonStatusError(payload) {
   );
 }
 
+function isHtmlPayload(payload, headers = {}) {
+  const contentType = headers?.['content-type'] || headers?.['Content-Type'] || '';
+  if (typeof contentType === 'string' && contentType.toLowerCase().includes('text/html')) {
+    return true;
+  }
+  if (typeof payload !== 'string') return false;
+  return /<html[\s>]/i.test(payload) || /<!doctype html/i.test(payload);
+}
+
+function normalizeUpstreamError(status, data, headers = {}) {
+  if (isHtmlPayload(data, headers)) {
+    return {
+      status,
+      data: { error: 'Server not reachable' }
+    };
+  }
+  return { status, data };
+}
+
 async function isServerUp(serverUrl) {
   if (!serverUrl || typeof serverUrl !== 'string') return false;
 
@@ -475,7 +494,7 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
 
         if (isJsonStatusError(cobaltRes.data) && hasNextTarget) {
           logWithRequestIp('warn', req, `Server ${targetUrl} returned JSON status=error, trying next server`);
-          lastServerResponse = { status: cobaltRes.status, data: cobaltRes.data };
+          lastServerResponse = normalizeUpstreamError(cobaltRes.status, cobaltRes.data, cobaltRes.headers);
           continue;
         }
 
@@ -483,7 +502,11 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
       } catch (err) {
         if (err.response && isJsonStatusError(err.response.data) && hasNextTarget) {
           logWithRequestIp('warn', req, `Server ${targetUrl} returned JSON status=error, trying next server`);
-          lastServerResponse = { status: err.response.status, data: err.response.data };
+          lastServerResponse = normalizeUpstreamError(
+            err.response.status,
+            err.response.data,
+            err.response.headers
+          );
           continue;
         }
         throw err;
@@ -496,8 +519,13 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
     throw new Error('No server response available.');
   } catch (err) {
     if (err.response) {
-      logWithRequestIp('error', req, 'Error in /ios-request:', err.response.data);
-      res.status(err.response.status).json(err.response.data);
+      const normalizedError = normalizeUpstreamError(
+        err.response.status,
+        err.response.data,
+        err.response.headers
+      );
+      logWithRequestIp('error', req, 'Error in /ios-request:', normalizedError.data);
+      res.status(normalizedError.status).json(normalizedError.data);
     } else {
       logWithRequestIp('error', req, 'Error in /ios-request:', err.message);
       res.status(500).json({ error: 'Internal server error' });
