@@ -81,6 +81,7 @@ function logTrustedProxyCidrs(sourceLabel) {
 export async function initializeTrustedProxyCidrs() {
   if (trustedProxyInitialized) return trustedProxyCidrs;
   trustedProxyInitialized = true;
+  const manualCidrs = parseCidrs(trustedProxyCidrsRaw);
 
   if (useCloudflareIps) {
     try {
@@ -89,8 +90,9 @@ export async function initializeTrustedProxyCidrs() {
         axios.get(cloudflareIpv6Url, { timeout: 5000, responseType: 'text' })
       ]);
       const cloudflareCidrs = [...parseCidrs(ipv4Res.data), ...parseCidrs(ipv6Res.data)];
-      applyTrustedProxyCidrs(cloudflareCidrs, 'Cloudflare');
-      logTrustedProxyCidrs('Cloudflare');
+      const combinedCidrs = [...cloudflareCidrs, ...manualCidrs];
+      applyTrustedProxyCidrs(combinedCidrs, 'Cloudflare + TRUSTED_PROXY_CIDRS');
+      logTrustedProxyCidrs('Cloudflare + TRUSTED_PROXY_CIDRS');
       return trustedProxyCidrs;
     } catch (error) {
       console.error(`Failed to fetch Cloudflare IP ranges: ${error.message}`);
@@ -98,7 +100,7 @@ export async function initializeTrustedProxyCidrs() {
     }
   }
 
-  applyTrustedProxyCidrs(parseCidrs(trustedProxyCidrsRaw), 'TRUSTED_PROXY_CIDRS');
+  applyTrustedProxyCidrs(manualCidrs, 'TRUSTED_PROXY_CIDRS');
   logTrustedProxyCidrs('TRUSTED_PROXY_CIDRS');
   return trustedProxyCidrs;
 }
