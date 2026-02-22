@@ -1,15 +1,61 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import fs from 'fs';
+import net from 'node:net';
 import { authCache } from './server.js';
 
 const maxLimitReq = parseInt(process.env.RATE_LIMIT) || 50;
 const bannedIpsFile = './banned-ips.log';
+const trustedProxyCidrsRaw = String(process.env.TRUSTED_PROXY_CIDRS || '').trim();
+const trustedProxyAllowlist = new net.BlockList();
+let trustedProxyRulesLoaded = false;
 
 function sanitizeIpValue(value) {
   if (typeof value !== 'string') return '';
-  const cleaned = value.replace(/[\r\n\t]/g, '').trim();
+  let cleaned = value.replace(/[\r\n\t]/g, '').trim();
   if (!cleaned) return '';
-  return /^[A-Fa-f0-9:.]+$/.test(cleaned) ? cleaned : '';
+  if (cleaned.startsWith('::ffff:')) {
+    cleaned = cleaned.slice(7);
+  }
+  if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  if (!cleaned) return '';
+  return net.isIP(cleaned) ? cleaned : '';
+}
+
+function loadTrustedProxyRules() {
+  if (trustedProxyRulesLoaded) return;
+  trustedProxyRulesLoaded = true;
+  if (!trustedProxyCidrsRaw) return;
+
+  const rules = trustedProxyCidrsRaw
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const rule of rules) {
+    const [address, prefix] = rule.split('/');
+    const sanitizedAddress = sanitizeIpValue(address);
+    const prefixNum = Number(prefix);
+    const ipVersion = net.isIP(sanitizedAddress);
+
+    if (!sanitizedAddress || Number.isNaN(prefixNum) || !Number.isInteger(prefixNum) || !ipVersion) {
+      console.warn(`Skipping invalid TRUSTED_PROXY_CIDRS entry: ${rule}`);
+      continue;
+    }
+
+    const type = ipVersion === 4 ? 'ipv4' : 'ipv6';
+    trustedProxyAllowlist.addSubnet(sanitizedAddress, prefixNum, type);
+  }
+}
+
+function isTrustedProxyIp(ip) {
+  loadTrustedProxyRules();
+  if (!trustedProxyCidrsRaw) return false;
+  const sanitizedIp = sanitizeIpValue(ip);
+  if (!sanitizedIp) return false;
+  const type = net.isIP(sanitizedIp) === 4 ? 'ipv4' : 'ipv6';
+  return trustedProxyAllowlist.check(sanitizedIp, type);
 }
 
 export function addIpToBannedList(ip) {
@@ -32,19 +78,24 @@ export function addIpToBannedList(ip) {
 }
 
 export function getClientIp(req) {
-  const cfConnectingIp = req.headers['cf-connecting-ip'];
-  if (cfConnectingIp) {
-    const ip = sanitizeIpValue(cfConnectingIp.split(',')[0]);
-    if (ip) return ip;
+  const peerIp = sanitizeIpValue(req.socket?.remoteAddress);
+  const trustForwardedHeaders = isTrustedProxyIp(peerIp);
+
+  if (trustForwardedHeaders) {
+    const cfConnectingIp = req.headers['cf-connecting-ip'];
+    if (cfConnectingIp) {
+      const ip = sanitizeIpValue(String(cfConnectingIp).split(',')[0]);
+      if (ip) return ip;
+    }
+
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (forwardedFor) {
+      const ip = sanitizeIpValue(String(forwardedFor).split(',')[0]);
+      if (ip) return ip;
+    }
   }
 
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (forwardedFor) {
-    const ip = sanitizeIpValue(forwardedFor.split(',')[0]);
-    if (ip) return ip;
-  }
-
-  return sanitizeIpValue(req.ip) || req.ip;
+  return sanitizeIpValue(req.ip) || peerIp || 'unknown';
 }
 
 function getRateLimitKey(req) {

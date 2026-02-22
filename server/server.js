@@ -107,7 +107,7 @@ console.log('----------------------------------------');
 
 const app = express();
 const port = process.env.PORT || 3200;
-app.set('trust proxy', true);
+app.set('trust proxy', false);
 const parseIpList = (value) => {
   if (!value || typeof value !== 'string') return new Set();
   return new Set(
