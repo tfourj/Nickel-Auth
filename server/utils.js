@@ -143,6 +143,10 @@ export function getClientIp(req) {
       if (ip) return ip;
     }
 
+    if (useCloudflareIps) {
+      return sanitizeIpValue(req.ip) || peerIp || 'unknown';
+    }
+
     const forwardedFor = req.headers['x-forwarded-for'];
     if (forwardedFor) {
       const ip = sanitizeIpValue(String(forwardedFor).split(',')[0]);

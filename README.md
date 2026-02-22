@@ -133,7 +133,7 @@ You can also view a list of public instances at [Nickel's Website](https://getni
 - `LB_HEALTHCHECK_TIMEOUT_MS`: Timeout for backend health checks in milliseconds (default: 1500)
 - `LB_HEALTHCHECK_PATH`: Health-check path appended to each backend base URL (default: `/`)
 - `LB_HEALTHCHECK_METHOD`: HTTP method for health checks (default: `GET`)
-- `USE_CLOUDFLARE_IPS`: If `true`, fetch Cloudflare IPv4/IPv6 ranges at startup and merge them with `TRUSTED_PROXY_CIDRS` (default: `false`)
+- `USE_CLOUDFLARE_IPS`: If `true`, fetch Cloudflare IPv4/IPv6 ranges at startup and merge them with `TRUSTED_PROXY_CIDRS`; in this mode client IP resolution only trusts `CF-Connecting-IP` from trusted proxy peers (default: `false`)
 - `TRUSTED_PROXY_CIDRS`: Comma- or space-separated CIDRs for trusted reverse proxies (for example your internal load balancer or tunnel subnet); forwarded IP headers are only trusted when the direct peer matches one of these ranges
 - `CLOUDFLARE_IPV4_URL`: URL used to fetch Cloudflare IPv4 ranges when `USE_CLOUDFLARE_IPS=true` (default: `https://www.cloudflare.com/ips-v4`)
 - `CLOUDFLARE_IPV6_URL`: URL used to fetch Cloudflare IPv6 ranges when `USE_CLOUDFLARE_IPS=true` (default: `https://www.cloudflare.com/ips-v6`)
