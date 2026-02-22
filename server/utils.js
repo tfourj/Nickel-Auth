@@ -1,4 +1,5 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import axios from 'axios';
 import fs from 'fs';
 import net from 'node:net';
 import { authCache } from './server.js';
@@ -6,8 +7,12 @@ import { authCache } from './server.js';
 const maxLimitReq = parseInt(process.env.RATE_LIMIT) || 50;
 const bannedIpsFile = './banned-ips.log';
 const trustedProxyCidrsRaw = String(process.env.TRUSTED_PROXY_CIDRS || '').trim();
-const trustedProxyAllowlist = new net.BlockList();
-let trustedProxyRulesLoaded = false;
+const useCloudflareIps = String(process.env.USE_CLOUDFLARE_IPS || 'false').toLowerCase() === 'true';
+const cloudflareIpv4Url = process.env.CLOUDFLARE_IPV4_URL || 'https://www.cloudflare.com/ips-v4';
+const cloudflareIpv6Url = process.env.CLOUDFLARE_IPV6_URL || 'https://www.cloudflare.com/ips-v6';
+let trustedProxyAllowlist = new net.BlockList();
+let trustedProxyCidrs = [];
+let trustedProxyInitialized = false;
 
 function sanitizeIpValue(value) {
   if (typeof value !== 'string') return '';
@@ -23,35 +28,83 @@ function sanitizeIpValue(value) {
   return net.isIP(cleaned) ? cleaned : '';
 }
 
-function loadTrustedProxyRules() {
-  if (trustedProxyRulesLoaded) return;
-  trustedProxyRulesLoaded = true;
-  if (!trustedProxyCidrsRaw) return;
-
-  const rules = trustedProxyCidrsRaw
+function parseCidrs(raw) {
+  if (!raw || typeof raw !== 'string') return [];
+  return raw
     .split(/[\s,]+/)
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
 
-  for (const rule of rules) {
+function applyTrustedProxyCidrs(entries, sourceLabel) {
+  trustedProxyAllowlist = new net.BlockList();
+  trustedProxyCidrs = [];
+  const deduped = new Set(entries);
+
+  for (const rule of deduped) {
     const [address, prefix] = rule.split('/');
     const sanitizedAddress = sanitizeIpValue(address);
     const prefixNum = Number(prefix);
     const ipVersion = net.isIP(sanitizedAddress);
+    const maxPrefix = ipVersion === 4 ? 32 : 128;
 
-    if (!sanitizedAddress || Number.isNaN(prefixNum) || !Number.isInteger(prefixNum) || !ipVersion) {
-      console.warn(`Skipping invalid TRUSTED_PROXY_CIDRS entry: ${rule}`);
+    if (
+      !sanitizedAddress ||
+      Number.isNaN(prefixNum) ||
+      !Number.isInteger(prefixNum) ||
+      !ipVersion ||
+      prefixNum < 0 ||
+      prefixNum > maxPrefix
+    ) {
+      console.warn(`Skipping invalid trusted proxy CIDR from ${sourceLabel}: ${rule}`);
       continue;
     }
 
     const type = ipVersion === 4 ? 'ipv4' : 'ipv6';
     trustedProxyAllowlist.addSubnet(sanitizedAddress, prefixNum, type);
+    trustedProxyCidrs.push(`${sanitizedAddress}/${prefixNum}`);
   }
+
+  return trustedProxyCidrs;
+}
+
+function logTrustedProxyCidrs(sourceLabel) {
+  if (!trustedProxyCidrs.length) {
+    console.warn('No trusted proxy CIDRs configured; forwarded headers will be ignored.');
+    return;
+  }
+
+  console.log(`Trusted proxy CIDRs loaded from ${sourceLabel} (${trustedProxyCidrs.length}):`);
+  trustedProxyCidrs.forEach((cidr) => console.log(` - ${cidr}`));
+}
+
+export async function initializeTrustedProxyCidrs() {
+  if (trustedProxyInitialized) return trustedProxyCidrs;
+  trustedProxyInitialized = true;
+
+  if (useCloudflareIps) {
+    try {
+      const [ipv4Res, ipv6Res] = await Promise.all([
+        axios.get(cloudflareIpv4Url, { timeout: 5000, responseType: 'text' }),
+        axios.get(cloudflareIpv6Url, { timeout: 5000, responseType: 'text' })
+      ]);
+      const cloudflareCidrs = [...parseCidrs(ipv4Res.data), ...parseCidrs(ipv6Res.data)];
+      applyTrustedProxyCidrs(cloudflareCidrs, 'Cloudflare');
+      logTrustedProxyCidrs('Cloudflare');
+      return trustedProxyCidrs;
+    } catch (error) {
+      console.error(`Failed to fetch Cloudflare IP ranges: ${error.message}`);
+      console.warn('Falling back to TRUSTED_PROXY_CIDRS.');
+    }
+  }
+
+  applyTrustedProxyCidrs(parseCidrs(trustedProxyCidrsRaw), 'TRUSTED_PROXY_CIDRS');
+  logTrustedProxyCidrs('TRUSTED_PROXY_CIDRS');
+  return trustedProxyCidrs;
 }
 
 function isTrustedProxyIp(ip) {
-  loadTrustedProxyRules();
-  if (!trustedProxyCidrsRaw) return false;
+  if (!trustedProxyCidrs.length) return false;
   const sanitizedIp = sanitizeIpValue(ip);
   if (!sanitizedIp) return false;
   const type = net.isIP(sanitizedIp) === 4 ? 'ipv4' : 'ipv6';

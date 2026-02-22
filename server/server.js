@@ -14,7 +14,7 @@ import xss from 'xss';
 import helmet from 'helmet';
 import client from 'prom-client';
 import cors from 'cors';
-import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceToken, extractDomain, getClientIp } from './utils.js';
+import { limiter, challengeLimiter, validateInput, loadApiKeys, validateDeviceToken, extractDomain, getClientIp, initializeTrustedProxyCidrs } from './utils.js';
 
 dotenv.config();
 
@@ -593,6 +593,8 @@ app.use((req, res, next) => {
   // For other methods, plain text
   res.status(404).send('Not found');
 });
+
+await initializeTrustedProxyCidrs();
 
 app.listen(port, () => {
   console.log(`Nickel-Auth (v${version}) running on port: ${port}`);
