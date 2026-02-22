@@ -5,17 +5,27 @@ import { authCache } from './server.js';
 const maxLimitReq = parseInt(process.env.RATE_LIMIT) || 50;
 const bannedIpsFile = './banned-ips.log';
 
+function sanitizeIpValue(value) {
+  if (typeof value !== 'string') return '';
+  const cleaned = value.replace(/[\r\n\t]/g, '').trim();
+  if (!cleaned) return '';
+  return /^[A-Fa-f0-9:.]+$/.test(cleaned) ? cleaned : '';
+}
+
 export function addIpToBannedList(ip) {
   try {
+    const sanitizedIp = sanitizeIpValue(ip);
+    if (!sanitizedIp) return;
+
     if (!fs.existsSync(bannedIpsFile)) {
       console.error(`Banned IPs file does not exist. Please create it manually...`);
     }
     const bannedList = fs.readFileSync(bannedIpsFile, 'utf8').split('\n').map(line => line.trim());
-    if (bannedList.includes(ip)) {
+    if (bannedList.includes(sanitizedIp)) {
       return;
     }
-    fs.appendFileSync(bannedIpsFile, `${ip}\n`, 'utf8');
-    console.error(`Blacklisted IP due to rate limit: ${ip}`);
+    fs.appendFileSync(bannedIpsFile, `${sanitizedIp}\n`, 'utf8');
+    console.error(`Blacklisted IP due to rate limit: ${sanitizedIp}`);
   } catch (err) {
     console.error(`Failed to write IP ${ip} to banned list:`, err.message);
   }
@@ -23,12 +33,18 @@ export function addIpToBannedList(ip) {
 
 export function getClientIp(req) {
   const cfConnectingIp = req.headers['cf-connecting-ip'];
-  if (cfConnectingIp) return cfConnectingIp.split(',')[0].trim();
+  if (cfConnectingIp) {
+    const ip = sanitizeIpValue(cfConnectingIp.split(',')[0]);
+    if (ip) return ip;
+  }
 
   const forwardedFor = req.headers['x-forwarded-for'];
-  if (forwardedFor) return forwardedFor.split(',')[0].trim();
+  if (forwardedFor) {
+    const ip = sanitizeIpValue(forwardedFor.split(',')[0]);
+    if (ip) return ip;
+  }
 
-  return req.ip;
+  return sanitizeIpValue(req.ip) || req.ip;
 }
 
 function getRateLimitKey(req) {

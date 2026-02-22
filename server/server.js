@@ -442,11 +442,13 @@ app.post('/ios-auth', trackAuthResponseTime(async (req, res) => {
 
 app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
   try {
-    const authHeader = req.headers['authorization'] || '';
-    const [authType, authToken] = authHeader.split(' ');
+    const authHeader = typeof req.headers['authorization'] === 'string'
+      ? req.headers['authorization'].trim()
+      : '';
+    const [authType, authToken] = authHeader.split(/\s+/, 2);
 
     if (authType !== 'Nickel-Auth' || !authToken) {
-      throw new Error('Invalid or missing authorization.');
+      return res.status(400).json({ error: 'Invalid or missing authorization header.' });
     }
 
     const valid = await validateDeviceToken(authToken);
