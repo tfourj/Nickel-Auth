@@ -534,13 +534,16 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
 }));
 
 app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
-  const authHeader = req.headers['authorization'] || '';
-  const [authType, authKey] = authHeader.split(' ');
-  logWithRequestIp('log', req, `Validating device token: ${authKey.substring(0, 8)}...`);
+  const authHeader = typeof req.headers['authorization'] === 'string'
+    ? req.headers['authorization'].trim()
+    : '';
+  const [authType, authKey] = authHeader.split(/\s+/, 2);
+  const authKeyPrefix = authKey ? `${authKey.substring(0, 8)}...` : '[missing]';
 
   if (authType !== 'Nickel-Auth' || !authKey) {
     return res.status(400).json({ error: 'Invalid or missing authorization header.' });
   }
+  logWithRequestIp('log', req, `Validating device token: ${authKeyPrefix}`);
 
   try {
     const [hasAuth] = await Promise.all([
@@ -550,12 +553,12 @@ app.post('/ios-validate', trackAuthResponseTime(async (req, res) => {
     if (hasAuth) {
       return res.status(200).json({ valid: true });
     } else {
-      logWithRequestIp('log', req, `Device token validation failed - not found in cache: ${authKey.substring(0, 8)}...`);
+      logWithRequestIp('log', req, `Device token validation failed - not found in cache: ${authKeyPrefix}`);
       return res.status(403).json({ valid: false, error: 'Key not found in cache.' });
     }
   } catch (error) {
     logWithRequestIp('error', req, 'Auth key validation failed:', error.message);
-    logWithRequestIp('error', req, `Failed device token: ${authKey.substring(0, 8)}...`);
+    logWithRequestIp('error', req, `Failed device token: ${authKeyPrefix}`);
     return res.status(401).json({ valid: false, error: 'Invalid or expired authKey.' });
   }
 }));
