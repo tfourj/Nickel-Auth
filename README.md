@@ -78,6 +78,14 @@ You can also view a list of public instances at [Nickel's Website](https://getni
     MONITORING_ORIGIN=http://example.com or false
     LOG_LEVEL=log
     LOG_FILTERED_IPS=
+    LB_HEALTHCHECK_CACHE_TTL=10
+    LB_HEALTHCHECK_TIMEOUT_MS=1500
+    LB_HEALTHCHECK_PATH=/
+    LB_HEALTHCHECK_METHOD=GET
+    USE_CLOUDFLARE_IPS=false
+    TRUSTED_PROXY_CIDRS=
+    CLOUDFLARE_IPV4_URL=https://www.cloudflare.com/ips-v4
+    CLOUDFLARE_IPV6_URL=https://www.cloudflare.com/ips-v6
    ```
 
 4. **Create API keys configuration file**
@@ -121,6 +129,14 @@ You can also view a list of public instances at [Nickel's Website](https://getni
 - `MONITORING_ORIGIN`: CORS origin for metrics endpoint (default: false)
 - `LOG_LEVEL`: Logging verbosity (`log`, `warn`, `debug`); `warn` and `debug` add on top of `log` output (errors always log)
 - `LOG_FILTERED_IPS`: Comma- or space-separated list of IPs to hide from request logs (exact match only)
+- `LB_HEALTHCHECK_CACHE_TTL`: Health check cache TTL in seconds for load-balanced Cobalt backends (default: 10)
+- `LB_HEALTHCHECK_TIMEOUT_MS`: Timeout for backend health checks in milliseconds (default: 1500)
+- `LB_HEALTHCHECK_PATH`: Health-check path appended to each backend base URL (default: `/`)
+- `LB_HEALTHCHECK_METHOD`: HTTP method for health checks (default: `GET`)
+- `USE_CLOUDFLARE_IPS`: If `true`, fetch Cloudflare IPv4/IPv6 ranges at startup and use them as trusted proxy CIDRs (default: `false`)
+- `TRUSTED_PROXY_CIDRS`: Comma- or space-separated CIDRs for trusted reverse proxies; forwarded IP headers are only trusted when the direct peer matches one of these ranges
+- `CLOUDFLARE_IPV4_URL`: URL used to fetch Cloudflare IPv4 ranges when `USE_CLOUDFLARE_IPS=true` (default: `https://www.cloudflare.com/ips-v4`)
+- `CLOUDFLARE_IPV6_URL`: URL used to fetch Cloudflare IPv6 ranges when `USE_CLOUDFLARE_IPS=true` (default: `https://www.cloudflare.com/ips-v6`)
 
 #### API Keys Configuration
 The `api_keys.json` file maps Cobalt API server URLs to their respective authentication keys. Each entry should be in the format:
