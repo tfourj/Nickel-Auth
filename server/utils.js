@@ -1,5 +1,4 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import axios from 'axios';
 import fs from 'fs';
 import net from 'node:net';
 import { authCache } from './server.js';
@@ -86,10 +85,16 @@ export async function initializeTrustedProxyCidrs() {
   if (useCloudflareIps) {
     try {
       const [ipv4Res, ipv6Res] = await Promise.all([
-        axios.get(cloudflareIpv4Url, { timeout: 5000, responseType: 'text' }),
-        axios.get(cloudflareIpv6Url, { timeout: 5000, responseType: 'text' })
+        fetch(cloudflareIpv4Url, { signal: AbortSignal.timeout(5000) }),
+        fetch(cloudflareIpv6Url, { signal: AbortSignal.timeout(5000) })
       ]);
-      const cloudflareCidrs = [...parseCidrs(ipv4Res.data), ...parseCidrs(ipv6Res.data)];
+      if (!ipv4Res.ok || !ipv6Res.ok) {
+        throw new Error(`Cloudflare IP fetch failed with status ${ipv4Res.status}/${ipv6Res.status}`);
+      }
+      const cloudflareCidrs = [
+        ...parseCidrs(await ipv4Res.text()),
+        ...parseCidrs(await ipv6Res.text())
+      ];
       const combinedCidrs = [...cloudflareCidrs, ...manualCidrs];
       applyTrustedProxyCidrs(combinedCidrs, 'Cloudflare + TRUSTED_PROXY_CIDRS');
       logTrustedProxyCidrs('Cloudflare + TRUSTED_PROXY_CIDRS');

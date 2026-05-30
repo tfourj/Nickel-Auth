@@ -1,14 +1,13 @@
 // server.js
 import express from 'express';
-import axios from 'axios';
 import bodyParser from 'body-parser';
 import NodeCache from 'node-cache';
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import chokidar from 'chokidar';
-import { v4 as uuidv4 } from 'uuid';
 import { verifyAttestation } from 'node-app-attest';
 import xss from 'xss';
 import helmet from 'helmet';
@@ -312,6 +311,31 @@ function normalizeUpstreamError(status, data, headers = {}) {
   return { status, data };
 }
 
+async function parseFetchResponse(response) {
+  const text = await response.text();
+  let data = text;
+
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  return {
+    status: response.status,
+    headers: Object.fromEntries(response.headers),
+    data
+  };
+}
+
+function createUpstreamError(response) {
+  const error = new Error(`Request failed with status ${response.status}`);
+  error.response = response;
+  return error;
+}
+
 async function isServerUp(serverUrl) {
   if (!serverUrl || typeof serverUrl !== 'string') return false;
 
@@ -320,11 +344,9 @@ async function isServerUp(serverUrl) {
 
   try {
     const healthUrl = new URL(healthCheckPath, serverUrl).toString();
-    const res = await axios.request({
+    const res = await fetch(healthUrl, {
       method: healthCheckMethod,
-      url: healthUrl,
-      timeout: healthCheckTimeoutMs,
-      validateStatus: () => true
+      signal: AbortSignal.timeout(healthCheckTimeoutMs)
     });
     const up = res.status < 500;
     healthCache.set(serverUrl, up);
@@ -377,7 +399,7 @@ async function resolveApiTargets(apiUrl, apiEntry) {
 // --- ENDPOINTS ---
 
 app.get('/ios-challenge', challengeLimiter, trackAuthResponseTime((req, res) => {
-    const challenge = uuidv4();
+    const challenge = randomUUID();
     challengeCache.set(challenge, true);
     logWithRequestIp('log', req, `Challenge was requested, returning ${challenge}`);
     res.send(JSON.stringify({ challenge }));
@@ -487,17 +509,25 @@ app.post('/ios-request', trackProxyResponseTime(async (req, res) => {
       logWithRequestIp('log', req, `Making request to Cobalt API for: ${domain} to instance url: ${targetUrl}`);
 
       try {
-        const cobaltRes = await axios.post(targetUrl, filteredBody, {
+        const cobaltResponse = await fetch(targetUrl, {
+          method: 'POST',
           headers: {
             Authorization: `Api-Key ${authKey}`,
             Accept: 'application/json',
+            'Content-Type': 'application/json'
           },
+          body: JSON.stringify(filteredBody)
         });
+        const cobaltRes = await parseFetchResponse(cobaltResponse);
 
         if (isJsonStatusError(cobaltRes.data) && hasNextTarget) {
           logWithRequestIp('warn', req, `Server ${targetUrl} returned JSON status=error, trying next server`);
           lastServerResponse = normalizeUpstreamError(cobaltRes.status, cobaltRes.data, cobaltRes.headers);
           continue;
+        }
+
+        if (!cobaltResponse.ok) {
+          throw createUpstreamError(cobaltRes);
         }
 
         return res.status(cobaltRes.status).json(cobaltRes.data);
