@@ -6,7 +6,15 @@ on:
       - master
     paths:
       - 'server/**'
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build_docker_image.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
@@ -21,13 +29,20 @@ jobs:
 
       - name: Get version from package.json
         id: version
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME  }}
           password: ${{ secrets.DOCKERHUB_TOKEN  }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -38,3 +53,5 @@ jobs:
           tags: |
             tfourj/nickel-auth:latest
             tfourj/nickel-auth:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/nickel-auth:latest
+            ghcr.io/${{ github.repository_owner }}/nickel-auth:${{ steps.version.outputs.version }}
