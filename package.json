@@ -20,7 +20,7 @@
   },
   "homepage": "https://github.com/tfourj/Nickel-Auth#readme",
   "dependencies": {
-    "body-parser": "^2.2.2",
+    "body-parser": "^2.3.0",
     "chokidar": "^5.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
