@@ -1,5 +1,5 @@
 # Use Node LTS
-FROM node:20
+FROM node:22-alpine
 
 # Set the working directory inside the container
 WORKDIR /app
